@@ -7,6 +7,7 @@ import { supabase } from './supabaseClient';
 import PageHeader from './PageHeader';
 import { useGlobalSnackbar } from './GlobalSnackbar';
 import AnimatedBackground from './AnimatedBackground';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
 const CreditManagement = () => {
   const [search, setSearch] = useState('');
@@ -17,6 +18,7 @@ const CreditManagement = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const showSnackbar = useGlobalSnackbar();
   const [editMode, setEditMode] = useState(false);
+  const isMobile = useMediaQuery('(max-width:600px)');
 
   useEffect(() => {
     if (search.trim() === '') {
@@ -91,11 +93,11 @@ const CreditManagement = () => {
   };
 
   return (
-    <Box sx={{ position: 'relative', minHeight: '100vh', p: 0 }}>
+    <Box sx={{ position: 'relative', minHeight: '100vh', p: 0, width: '100%' }}>
       <AnimatedBackground />
-      <Container maxWidth="lg" sx={{ py: 4, position: 'relative', zIndex: 2 }}>
+      <Container maxWidth={false} sx={{ py: { xs: 2, sm: 4 }, position: 'relative', zIndex: 2, px: { xs: 1, sm: 2 }, width: '100%' }}>
         <PageHeader title="Credit Management" subtitle="Manually add credits to customer accounts" />
-        <Box sx={{ maxWidth: 400, mb: 3 }}>
+        <Box sx={{ maxWidth: 400, mb: 3, width: '100%' }}>
           <TextField
             label="Search customer name"
             variant="outlined"
@@ -106,15 +108,15 @@ const CreditManagement = () => {
             sx={{ width: '100%' }}
           />
         </Box>
-        <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 8px rgba(30,58,138,0.04)', maxWidth: '100%' }}>
-          <Table sx={{ minWidth: 650 }}>
+        <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 8px rgba(30,58,138,0.04)', width: '100%', overflowX: 'auto', minWidth: 0 }}>
+          <Table sx={{ minWidth: 650, width: '100%', fontSize: { xs: 13, sm: 15 } }}>
             <TableHead>
               <TableRow sx={{ background: '#f1f5f9' }}>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Barangay</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Current Credit</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.main' }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 100, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Barangay</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 100, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Current Credit</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -164,8 +166,8 @@ const CreditManagement = () => {
             </TableBody>
           </Table>
         </TableContainer>
-        <Dialog open={dialogOpen} onClose={handleDialogClose} maxWidth="xs" fullWidth>
-          <DialogTitle>{editMode ? 'Edit Credit' : `Add Credit to ${selectedCustomer?.name}`}</DialogTitle>
+        <Dialog open={dialogOpen} onClose={handleDialogClose} maxWidth="xs" fullWidth fullScreen={isMobile}>
+          <DialogTitle sx={{ fontSize: { xs: 18, sm: 22 } }}>{editMode ? 'Edit Credit' : `Add Credit to ${selectedCustomer?.name}`}</DialogTitle>
           <DialogContent>
             <TextField
               label="Credit Amount"
@@ -178,8 +180,8 @@ const CreditManagement = () => {
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleDialogClose}>Cancel</Button>
-            <Button onClick={handleAddCredit} variant="contained">{editMode ? 'Update Credit' : 'Add Credit'}</Button>
+            <Button onClick={handleDialogClose} sx={{ minHeight: 44, fontSize: { xs: 13, sm: 15 } }}>Cancel</Button>
+            <Button onClick={handleAddCredit} variant="contained" sx={{ minHeight: 44, fontSize: { xs: 13, sm: 15 } }}>{editMode ? 'Update Credit' : 'Add Credit'}</Button>
           </DialogActions>
         </Dialog>
         {/* Remove local Snackbar/Alert, global snackbar will handle alerts */}

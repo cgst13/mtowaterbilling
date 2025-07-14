@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import {
-  Box, Typography, TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Button, Checkbox, Stack, Avatar, TablePagination, CircularProgress, Grid, Tabs, Tab, Skeleton, Container
+  Box, Typography, TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Button, Checkbox, Stack, Avatar, TablePagination, CircularProgress, Grid, Tabs, Tab, Skeleton, Container, useMediaQuery, Chip
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import { SentimentDissatisfied as EmptyIcon } from '@mui/icons-material';
+import { SentimentDissatisfied as EmptyIcon, Receipt as ReceiptIcon, Payment as PaymentIcon } from '@mui/icons-material';
 import DownloadIcon from '@mui/icons-material/Download';
 import PageHeader from './PageHeader';
 import { useGlobalSnackbar } from './GlobalSnackbar';
@@ -52,6 +52,7 @@ const Payments = () => {
   });
 
   const showSnackbar = useGlobalSnackbar();
+  const isMobile = useMediaQuery('(max-width:600px)');
 
   // Fetch customers matching search
   useEffect(() => {
@@ -173,24 +174,26 @@ const Payments = () => {
     setCreditApplied(Math.min(totalDue, credit));
   }, [selectedCustomer, selectedBills]);
 
-  // Helper: Calculate total billed for selected bills
+  // Helper: Calculate total billed for selected bills (now includes surcharge)
   const getTotalBilled = () => {
     if (!selectedCustomer || !selectedBills.length) return 0;
     const discountRate = Number(selectedCustomer.discount) || 0;
-      if (selectedBills.length === 1) {
-        const bill = bills.find(b => b.billid === selectedBills[0]);
+    if (selectedBills.length === 1) {
+      const bill = bills.find(b => b.billid === selectedBills[0]);
       if (!bill) return 0;
-          const discountAmount = ((Number(bill.basicamount) || 0) * discountRate) / 100;
-          const totalAfterDiscount = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) - discountAmount;
-          const credit = Number(selectedCustomer.credit_balance) || 0;
-      return Math.max(totalAfterDiscount - credit, 0);
-      } else {
-        const selected = bills.filter(b => selectedBills.includes(b.billid));
-        const totalDiscount = selected.reduce((sum, b) => sum + (((Number(b.basicamount) || 0) * discountRate) / 100), 0);
-        const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) - totalDiscount;
-        const credit = Number(selectedCustomer.credit_balance) || 0;
+      const surcharge = calculateSurcharge(bill.billedmonth, bill.basicamount);
+      const discountAmount = ((Number(bill.basicamount) || 0) * discountRate) / 100;
+      const totalBeforeCredit = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) + surcharge - discountAmount;
+      const credit = Number(selectedCustomer.credit_balance) || 0;
+      return Math.max(totalBeforeCredit - credit, 0);
+    } else {
+      const selected = bills.filter(b => selectedBills.includes(b.billid));
+      const totalSurcharge = selected.reduce((sum, b) => sum + (Number(calculateSurcharge(b.billedmonth, b.basicamount)) || 0), 0);
+      const totalDiscount = selected.reduce((sum, b) => sum + (((Number(b.basicamount) || 0) * discountRate) / 100), 0);
+      const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) + totalSurcharge - totalDiscount;
+      const credit = Number(selectedCustomer.credit_balance) || 0;
       return Math.max(totalAmountBeforeCredit - credit, 0);
-      }
+    }
   };
 
   // Set paymentAmount to total billed by default, and update if total billed changes
@@ -236,36 +239,32 @@ const Payments = () => {
   const handleMarkAsPaid = async () => {
     setPaying(true);
     const now = paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString();
-    // Calculate total billed (after discount, surcharge, and credit applied)
     let totalBilled = 0;
     let overpayment = 0;
     let selected = bills.filter(b => selectedBills.includes(b.billid));
-    // Sort selected bills by billedmonth ascending (oldest first)
     selected = selected.sort((a, b) => new Date(a.billedmonth) - new Date(b.billedmonth));
     const discountRate = Number(selectedCustomer.discount) || 0;
-    // Calculate total discount and total billed
     if (selected.length === 1) {
       const bill = selected[0];
+      const surcharge = calculateSurcharge(bill.billedmonth, bill.basicamount);
       const discountAmount = ((Number(bill.basicamount) || 0) * discountRate) / 100;
-      const totalAfterDiscount = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) - discountAmount;
+      const totalBeforeCredit = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) + surcharge - discountAmount;
       const credit = Number(selectedCustomer.credit_balance) || 0;
-      totalBilled = Math.max(totalAfterDiscount - credit, 0);
+      totalBilled = Math.max(totalBeforeCredit - credit, 0);
     } else {
+      const totalSurcharge = selected.reduce((sum, b) => sum + (Number(calculateSurcharge(b.billedmonth, b.basicamount)) || 0), 0);
       const totalDiscount = selected.reduce((sum, b) => sum + (((Number(b.basicamount) || 0) * discountRate) / 100), 0);
-      const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) - totalDiscount;
+      const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) + totalSurcharge - totalDiscount;
       const credit = Number(selectedCustomer.credit_balance) || 0;
       totalBilled = Math.max(totalAmountBeforeCredit - credit, 0);
     }
     const payment = Number(paymentAmount);
     overpayment = payment - totalBilled;
-    // 1. Update all columns for each selected bill
     for (let i = 0; i < selected.length; i++) {
       const bill = selected[i];
-      // Calculate discount for this bill, always round to 2 decimal places
+      const surcharge = calculateSurcharge(bill.billedmonth, bill.basicamount);
       const billDiscount = Number((((Number(bill.basicamount) || 0) * discountRate) / 100).toFixed(2));
-      // Calculate total for this bill
-      const billTotal = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) - billDiscount;
-      // Only apply advancepaymentamount (credit) to the oldest bill
+      const billTotal = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) + surcharge - billDiscount;
       let advancePayment = null;
       if (i === selected.length - 1 && overpayment > 0) {
         advancePayment = overpayment;
@@ -277,9 +276,9 @@ const Payments = () => {
         paymentstatus: 'Paid',
         datepaid: now,
         paidby: user.name,
-        basicamount: bill.basicamount, // keep as is
-        surchargeamount: bill.surchargeamount, // keep as is
-        discountamount: billDiscount, // always set, rounded
+        basicamount: bill.basicamount,
+        surchargeamount: surcharge,
+        discountamount: billDiscount,
         totalbillamount: billTotal,
         advancepaymentamount: advancePayment,
       };
@@ -352,7 +351,19 @@ const Payments = () => {
   return (
     <Box sx={{ position: 'relative', minHeight: '100vh', p: 0 }}>
       <AnimatedBackground />
-      <Container maxWidth="lg" sx={{ py: 4, position: 'relative', zIndex: 2 }}>
+      <Container maxWidth={false} disableGutters sx={{
+        minHeight: '100vh',
+        width: '100%',
+        maxWidth: '100%',
+        px: { xs: 0, sm: 2 },
+        py: { xs: 0, sm: 2 },
+        position: 'relative',
+        zIndex: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        overflowX: 'auto',
+        overflowY: 'visible',
+      }}>
         <PageHeader
           title="Payments"
           actions={
@@ -361,48 +372,67 @@ const Payments = () => {
               startIcon={<DownloadIcon />}
               onClick={() => exportToCSV(paginatedBills, 'unpaid_bills.csv')}
               size="large"
+              sx={{ minHeight: 44, fontSize: { xs: 13, sm: 15 } }}
             >
               Export CSV
             </Button>
           }
         />
-        <Box sx={{ width: '100%', maxWidth: 340, mb: 3 }}>
+        {/* 1. Enhance the search bar and results */}
+        <Box sx={{ width: { xs: '100%', md: 400 }, mb: 1, mt: 0, mx: 0 }}>
+          <Paper elevation={2} sx={{ p: 1.2, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1, boxShadow: 1 }}>
+            <SearchIcon sx={{ color: 'primary.main', mr: 1 }} />
             <TextField
               label="Search customer name"
-              variant="outlined"
+              variant="standard"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               size="small"
-              InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1 }} /> }}
-              sx={{ width: '100%' }}
+              fullWidth
+              placeholder="Type to search..."
+              InputProps={{ disableUnderline: true }}
+              sx={{ background: 'transparent' }}
             />
-          </Box>
-        <Grid container spacing={3} alignItems="stretch" sx={{ height: '100%' }}>
+          </Paper>
+          {searchTerm && searchResults.length === 0 && !loading && (
+            <Box sx={{ mt: 1, textAlign: 'center', color: 'text.secondary' }}>
+              <EmptyIcon sx={{ fontSize: 40, mb: 1 }} />
+              <Typography>No customers found.</Typography>
+            </Box>
+          )}
+        </Box>
+        <Grid container spacing={1} alignItems="stretch" sx={{ flex: 1, minHeight: 0, height: { xs: 'auto', md: 'calc(100vh - 80px)' }, width: '100%', m: 0 }}>
         {/* Left column: Customer Info, Summary */}
-          <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Grid item xs={12} md={4} sx={{
+            display: 'flex', flexDirection: 'column', height: { xs: 'auto', md: 'calc(100vh - 120px)' }, minHeight: 0, pr: { md: 1 },
+          }}>
           {(!selectedCustomer && !loading && searchResults.length === 0) ? (
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }} />
           ) : (
             <>
               {selectedCustomer && (
-                  <Paper sx={{ mb: 2, p: 2, background: '#f8fafc', borderRadius: 3, flex: '0 0 auto' }}>
+                // 2. Customer Info Panel redesign
+                <Paper sx={{ mb: 2, p: 3, background: 'linear-gradient(135deg, #e0f7fa 0%, #e0e7ff 100%)', borderRadius: 4, boxShadow: 3, position: 'relative' }}>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-                    <Avatar sx={{ width: 48, height: 48, bgcolor: 'secondary.main', fontSize: 22 }}>
+                    <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.main', fontSize: 28, boxShadow: 2 }}>
                       {selectedCustomer.name ? selectedCustomer.name.split(' ').map(n => n[0]).join('').toUpperCase() : '?'}
                     </Avatar>
                     <Box>
-                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{selectedCustomer.name}</Typography>
-                      <Typography variant="body2" color="text.secondary">ID: {selectedCustomer.customerid}</Typography>
-                      <Typography variant="body2" color="text.secondary">Type: {selectedCustomer.type} | Barangay: {selectedCustomer.barangay}</Typography>
-                      <Typography variant="body2" color="text.secondary">Credit Balance: {formatAmount(selectedCustomer.credit_balance || 0)}</Typography>
-                      {selectedCustomer.discount > 0 && (
-                        <Typography variant="body2" color="text.secondary">
-                          Discount: {Number(selectedCustomer.discount).toLocaleString(undefined, { maximumFractionDigits: 2 })}%
-                        </Typography>
-                      )}
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.dark' }}>{selectedCustomer.name}</Typography>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">ID: {selectedCustomer.customerid}</Typography>
+                        <Chip label={selectedCustomer.type} size="small" color="info" sx={{ fontWeight: 600 }} />
+                        <Chip label={selectedCustomer.barangay} size="small" color="secondary" sx={{ fontWeight: 600 }} />
+                      </Stack>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                        <Chip icon={<DownloadIcon sx={{ color: 'success.main' }} />} label={`Credit: ${formatAmount(selectedCustomer.credit_balance || 0)}`} size="small" color="success" />
+                        {selectedCustomer.discount > 0 && (
+                          <Chip label={`Discount: ${Number(selectedCustomer.discount).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`} size="small" color="warning" />
+                        )}
+                      </Stack>
                     </Box>
                     <Box sx={{ flexGrow: 1 }} />
-                    <Button variant="outlined" color="secondary" onClick={() => setSelectedCustomer(null)}>
+                    <Button variant="outlined" color="secondary" onClick={() => setSelectedCustomer(null)} sx={{ fontWeight: 600, borderRadius: 2 }}>
                       Change Customer
                     </Button>
                   </Stack>
@@ -433,8 +463,9 @@ const Payments = () => {
               {loading && <CircularProgress sx={{ my: 4 }} />}
               {/* Summary only visible when a customer is selected */}
               {selectedCustomer && (
-                  <Paper elevation={2} sx={{ mt: 2, background: '#f8fafc', borderRadius: 3, p: 3, flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#334155' }}>Bill Summary</Typography>
+                // 3. Bill Summary & Payment Form redesign
+                <Paper elevation={2} sx={{ mt: 2, background: '#f8fafc', borderRadius: 4, p: 3, boxShadow: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: 'primary.main' }}>Bill Summary</Typography>
                   {selectedBills.length === 0 ? (
                     <Box sx={{ color: 'text.secondary', textAlign: 'center', py: 4 }}>
                       <Typography variant="body2">Select a bill to see its summary.</Typography>
@@ -443,8 +474,9 @@ const Payments = () => {
                     const bill = bills.find(b => b.billid === selectedBills[0]);
                     if (!bill) return null;
                     const discountRate = Number(selectedCustomer.discount) || 0;
+                    const surcharge = calculateSurcharge(bill.billedmonth, bill.basicamount);
                     const discountAmount = ((Number(bill.basicamount) || 0) * discountRate) / 100;
-                    const totalAfterDiscount = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) - discountAmount;
+                    const totalBeforeCredit = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) + surcharge - discountAmount;
                     const credit = Number(selectedCustomer.credit_balance) || 0;
                     return (
                       <>
@@ -454,7 +486,7 @@ const Payments = () => {
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                           <Typography variant="body2">Surcharge:</Typography>
-                          <Typography variant="body2">{formatAmount(calculateSurcharge(bill.billedmonth, bill.basicamount))}</Typography>
+                          <Typography variant="body2">{formatAmount(surcharge)}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                           <Typography variant="body2">Discount ({discountRate}%):</Typography>
@@ -466,22 +498,21 @@ const Payments = () => {
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                           <Typography variant="body2">Total Amount:</Typography>
-                          <Typography variant="body2">{formatAmount(totalAfterDiscount - credit)}</Typography>
+                          <Typography variant="body2">{formatAmount(totalBeforeCredit - credit)}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, pt: 2, borderTop: '1px solid #e0e0e0' }}>
                           <Typography variant="body2" sx={{ fontWeight: 700 }}>Total Billed:</Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatAmount(totalAfterDiscount - credit)}</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatAmount(totalBeforeCredit - credit)}</Typography>
                         </Box>
                       </>
                     );
                   })() : (() => {
-                    // Multiple bills selected: show totals with discount and credit applied
                     const selected = bills.filter(b => selectedBills.includes(b.billid));
                     const discountRate = Number(selectedCustomer.discount) || 0;
                     const totalBasic = selected.reduce((sum, b) => sum + (Number(b.basicamount) || 0), 0);
                     const totalSurcharge = selected.reduce((sum, b) => sum + (Number(calculateSurcharge(b.billedmonth, b.basicamount)) || 0), 0);
                     const totalDiscount = selected.reduce((sum, b) => sum + (((Number(b.basicamount) || 0) * discountRate) / 100), 0);
-                    const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) - totalDiscount;
+                    const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) + totalSurcharge - totalDiscount;
                     const credit = Number(selectedCustomer.credit_balance) || 0;
                     return (
                       <>
@@ -516,14 +547,15 @@ const Payments = () => {
                 </Paper>
               )}
               {selectedCustomer && selectedBills.length > 0 && (
-                  <Paper sx={{ mt: 2, p: 2, background: '#f8fafc', borderRadius: 3, flex: '0 0 auto' }}>
+                // 3. Bill Summary & Payment Form redesign
+                <Paper elevation={2} sx={{ mt: 2, p: 2, background: '#f8fafc', borderRadius: 3, flex: '0 0 auto' }}>
                   <TextField
                     label="Payment Amount"
                     type="number"
                     value={paymentAmount}
                     onChange={e => setPaymentAmount(e.target.value)}
                     size="small"
-                      sx={{ width: 200, mb: 2 }}
+                    sx={{ width: 180, mb: 2 }}
                     inputProps={{ min: 0 }}
                   />
                     <TextField
@@ -532,7 +564,7 @@ const Payments = () => {
                       value={paymentDate}
                       onChange={e => setPaymentDate(e.target.value)}
                       size="small"
-                      sx={{ width: 200, mb: 2, ml: 2 }}
+                      sx={{ width: 180, mb: 2, ml: 2 }}
                       InputLabelProps={{ shrink: true }}
                     />
                   {paymentAmount && Number(paymentAmount) > 0 && Number(paymentAmount) > Number((() => {
@@ -541,15 +573,17 @@ const Payments = () => {
                       if (bill) {
                         const discountRate = Number(selectedCustomer.discount) || 0;
                         const discountAmount = ((Number(bill.basicamount) || 0) * discountRate) / 100;
-                        const totalAfterDiscount = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) - discountAmount;
+                        const surcharge = calculateSurcharge(bill.billedmonth, bill.basicamount);
+                        const totalBeforeCredit = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) + surcharge - discountAmount;
                         const credit = Number(selectedCustomer.credit_balance) || 0;
-                        return Math.max(totalAfterDiscount - credit, 0);
+                        return Math.max(totalBeforeCredit - credit, 0);
                       }
                     } else {
                       const selected = bills.filter(b => selectedBills.includes(b.billid));
                       const discountRate = Number(selectedCustomer.discount) || 0;
                       const totalDiscount = selected.reduce((sum, b) => sum + (((Number(b.basicamount) || 0) * discountRate) / 100), 0);
-                      const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) - totalDiscount;
+                      const totalSurcharge = selected.reduce((sum, b) => sum + (Number(calculateSurcharge(b.billedmonth, b.basicamount)) || 0), 0);
+                      const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) + totalSurcharge - totalDiscount;
                       const credit = Number(selectedCustomer.credit_balance) || 0;
                       return Math.max(totalAmountBeforeCredit - credit, 0);
                     }
@@ -562,15 +596,17 @@ const Payments = () => {
                           if (bill) {
                             const discountRate = Number(selectedCustomer.discount) || 0;
                             const discountAmount = ((Number(bill.basicamount) || 0) * discountRate) / 100;
-                            const totalAfterDiscount = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) - discountAmount;
+                            const surcharge = calculateSurcharge(bill.billedmonth, bill.basicamount);
+                            const totalBeforeCredit = (Number(bill.totalbillamount) || Number(bill.basicamount) || 0) + surcharge - discountAmount;
                             const credit = Number(selectedCustomer.credit_balance) || 0;
-                            return Math.max(totalAfterDiscount - credit, 0);
+                            return Math.max(totalBeforeCredit - credit, 0);
                           }
                         } else {
                           const selected = bills.filter(b => selectedBills.includes(b.billid));
                           const discountRate = Number(selectedCustomer.discount) || 0;
                           const totalDiscount = selected.reduce((sum, b) => sum + (((Number(b.basicamount) || 0) * discountRate) / 100), 0);
-                          const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) - totalDiscount;
+                          const totalSurcharge = selected.reduce((sum, b) => sum + (Number(calculateSurcharge(b.billedmonth, b.basicamount)) || 0), 0);
+                          const totalAmountBeforeCredit = selected.reduce((sum, b) => sum + (Number(b.totalbillamount) || Number(b.basicamount) || 0), 0) + totalSurcharge - totalDiscount;
                           const credit = Number(selectedCustomer.credit_balance) || 0;
                           return Math.max(totalAmountBeforeCredit - credit, 0);
                         }
@@ -583,8 +619,9 @@ const Payments = () => {
                     color="primary"
                     disabled={selectedBills.length === 0 || paying}
                     onClick={handleMarkAsPaid}
-                    sx={{ minWidth: 180, fontWeight: 600, mt: 2 }}
+                    sx={{ minWidth: 180, fontWeight: 700, borderRadius: 2 }}
                   >
+                    {paying ? <CircularProgress size={22} sx={{ color: 'white', mr: 1 }} /> : null}
                     {paying ? 'Processing...' : 'Mark as Paid'}
                   </Button>
                 </Paper>
@@ -593,37 +630,41 @@ const Payments = () => {
           )}
         </Grid>
         {/* Right column: Tabs, Tables */}
-          <Grid item xs={12} md={8} sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Grid item xs={12} md={8} sx={{
+            display: 'flex', flexDirection: 'column', height: { xs: 'auto', md: 'calc(100vh - 120px)' }, minHeight: 0, pl: { md: 1 },
+          }}>
           {selectedCustomer && (
             <>
+              {/* 4. Tabs & Tables redesign */}
               <Tabs value={tabIndex} onChange={(e, v) => setTabIndex(v)} sx={{ mb: 2 }}>
-                <Tab label="Unpaid Bills" />
-                <Tab label="Payment History" />
+                <Tab icon={<ReceiptIcon sx={{ mr: 1 }} />} label="Unpaid Bills" />
+                <Tab icon={<PaymentIcon sx={{ mr: 1 }} />} label="Payment History" />
               </Tabs>
               {tabIndex === 0 && (
-                  <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', height: 'auto', minHeight: 120 }}>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Unpaid Bills</Typography>
-                    <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 8px rgba(30,58,138,0.04)', mb: 2, flex: 1 }}>
-                      <Table sx={{ minWidth: 700 }} stickyHeader>
-                      <TableHead>
-                        <TableRow sx={{ background: '#f1f5f9' }}>
-                          <TableCell padding="checkbox">
-                            <Checkbox
-                              indeterminate={isIndeterminate}
-                              checked={isAllSelected}
-                              onChange={handleSelectAll}
-                              inputProps={{ 'aria-label': 'select all bills' }}
-                            />
-                          </TableCell>
-                          <TableCell>Bill ID</TableCell>
-                          <TableCell>Billed Month</TableCell>
-                          <TableCell>Previous Reading</TableCell>
-                          <TableCell>Current Reading</TableCell>
-                          <TableCell>Consumption</TableCell>
-                          <TableCell>Amount Due</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
+                    {/* Unpaid Bills Table */}
+                    <TableContainer component={Paper} sx={{ borderRadius: 4, boxShadow: 2, mb: 2, overflowX: 'auto', height: 'auto', minHeight: 80 }}>
+                      <Table sx={{ minWidth: 700, fontSize: { xs: 12, sm: 14 } }} stickyHeader>
+                        <TableHead>
+                          <TableRow sx={{ background: 'linear-gradient(90deg, #e0e7ff 0%, #f1f5f9 100%)' }}>
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                indeterminate={isIndeterminate}
+                                checked={isAllSelected}
+                                onChange={handleSelectAll}
+                                inputProps={{ 'aria-label': 'select all bills' }}
+                              />
+                            </TableCell>
+                            <TableCell>Bill ID</TableCell>
+                            <TableCell>Billed Month</TableCell>
+                            <TableCell>Previous Reading</TableCell>
+                            <TableCell>Current Reading</TableCell>
+                            <TableCell>Consumption</TableCell>
+                            <TableCell>Amount Due</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
                           {loading ? (
                             Array.from({ length: 5 }).map((_, i) => (
                               <TableRow key={i}>
@@ -657,99 +698,93 @@ const Payments = () => {
                                   },
                                 }}
                               >
-                            <TableCell padding="checkbox">
-                              <Checkbox
+                                <TableCell padding="checkbox">
+                                  <Checkbox
                                     checked={selectedBills.includes(b.billid)}
                                     onChange={() => handleSelectBill(b.billid)}
-                              />
-                            </TableCell>
+                                  />
+                                </TableCell>
                                 <TableCell>{b.billid}</TableCell>
                                 <TableCell>{b.billedmonth ? b.billedmonth.slice(0, 7) : ''}</TableCell>
                                 <TableCell>{b.previousreading}</TableCell>
                                 <TableCell>{b.currentreading}</TableCell>
                                 <TableCell>{b.consumption}</TableCell>
                                 <TableCell>₱{Number(b.totalbillamount || b.basicamount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</TableCell>
-                          </TableRow>
+                              </TableRow>
                             ))
                           )}
-                        {paginatedBills.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={7} align="center">
-                              <Box sx={{ py: 4, color: 'text.secondary' }}>
-                                <Typography>No unpaid bills found.</Typography>
-                              </Box>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                    <TablePagination
-                      component="div"
-                      count={unpaidBills.length}
-                      page={page}
-                      onPageChange={(e, newPage) => setPage(newPage)}
-                      rowsPerPage={rowsPerPage}
-                      onRowsPerPageChange={e => {
-                        setRowsPerPage(parseInt(e.target.value, 10));
-                        setPage(0);
-                      }}
-                      rowsPerPageOptions={[15, 25, 50]}
-                    />
-                  </TableContainer>
+                        </TableBody>
+                      </Table>
+                      <TablePagination
+                        component="div"
+                        count={unpaidBills.length}
+                        page={page}
+                        onPageChange={(e, newPage) => setPage(newPage)}
+                        rowsPerPage={rowsPerPage}
+                        onRowsPerPageChange={e => {
+                          setRowsPerPage(parseInt(e.target.value, 10));
+                          setPage(0);
+                        }}
+                        rowsPerPageOptions={[15, 25, 50]}
+                      />
+                    </TableContainer>
                   </Box>
               )}
               {tabIndex === 1 && (
-                  <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', height: 'auto', minHeight: 120 }}>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Payment History</Typography>
-                    <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: 3, mb: 2, flex: 1 }}>
-                    <Table>
-                      <TableHead>
-                        <TableRow sx={{ background: '#f1f5f9' }}>
-                          <TableCell>Bill ID</TableCell>
-                          <TableCell>Billed Month</TableCell>
-                          <TableCell>Previous Reading</TableCell>
-                          <TableCell>Current Reading</TableCell>
-                          <TableCell>Consumption</TableCell>
-                          <TableCell>Amount Paid</TableCell>
-                          <TableCell>Date Paid</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {paidBills.slice(paidPage * paidRowsPerPage, paidPage * paidRowsPerPage + paidRowsPerPage).map((bill) => (
-                          <TableRow key={bill.billid}>
-                            <TableCell>{bill.billid}</TableCell>
-                            <TableCell>{bill.billedmonth ? bill.billedmonth.slice(0, 7) : ''}</TableCell>
-                            <TableCell>{bill.previousreading}</TableCell>
-                            <TableCell>{bill.currentreading}</TableCell>
-                            <TableCell>{bill.consumption}</TableCell>
-                            <TableCell>₱{Number(bill.totalbillamount || bill.basicamount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</TableCell>
-                            <TableCell>{bill.datepaid ? new Date(bill.datepaid).toLocaleDateString() : ''}</TableCell>
+                    {/* 5. Payment History Table redesign (similar to above, with PaymentIcon and improved empty state) */}
+                    <TableContainer component={Paper} sx={{ borderRadius: 4, boxShadow: 2, mb: 2, overflowX: 'auto', height: 'auto', minHeight: 80 }}>
+                      <Table sx={{ fontSize: { xs: 12, sm: 14 } }}>
+                        <TableHead>
+                          <TableRow sx={{ background: 'linear-gradient(90deg, #e0e7ff 0%, #f1f5f9 100%)' }}>
+                            <TableCell>Bill ID</TableCell>
+                            <TableCell>Billed Month</TableCell>
+                            <TableCell>Previous Reading</TableCell>
+                            <TableCell>Current Reading</TableCell>
+                            <TableCell>Consumption</TableCell>
+                            <TableCell>Amount Paid</TableCell>
+                            <TableCell>Date Paid</TableCell>
                           </TableRow>
-                        ))}
-                        {paidBills.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={7} align="center">
-                              <Box sx={{ py: 4, color: 'text.secondary' }}>
-                                <Typography>No payment history found.</Typography>
-                              </Box>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                    <TablePagination
-                      component="div"
-                      count={paidBills.length}
-                      page={paidPage}
-                      onPageChange={(e, newPage) => setPaidPage(newPage)}
-                      rowsPerPage={paidRowsPerPage}
-                      onRowsPerPageChange={e => {
-                        setPaidRowsPerPage(parseInt(e.target.value, 10));
-                        setPaidPage(0);
-                      }}
-                      rowsPerPageOptions={[15, 25, 50]}
-                    />
-                  </TableContainer>
+                        </TableHead>
+                        <TableBody>
+                          {paidBills.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={7} align="center">
+                                <Box sx={{ py: 4, color: 'text.secondary' }}>
+                                  <PaymentIcon sx={{ fontSize: 40, mb: 1 }} />
+                                  <Typography>No payment history found.</Typography>
+                                </Box>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            paidBills.slice(paidPage * paidRowsPerPage, paidPage * paidRowsPerPage + paidRowsPerPage).map((bill) => (
+                              <TableRow key={bill.billid} hover sx={{ '&:hover': { backgroundColor: '#e0f2fe' } }}>
+                                <TableCell>{bill.billid}</TableCell>
+                                <TableCell>{bill.billedmonth ? bill.billedmonth.slice(0, 7) : ''}</TableCell>
+                                <TableCell>{bill.previousreading}</TableCell>
+                                <TableCell>{bill.currentreading}</TableCell>
+                                <TableCell>{bill.consumption}</TableCell>
+                                <TableCell>₱{Number(bill.totalbillamount || bill.basicamount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell>{bill.datepaid ? new Date(bill.datepaid).toLocaleDateString() : ''}</TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                      <TablePagination
+                        component="div"
+                        count={paidBills.length}
+                        page={paidPage}
+                        onPageChange={(e, newPage) => setPaidPage(newPage)}
+                        rowsPerPage={paidRowsPerPage}
+                        onRowsPerPageChange={e => {
+                          setPaidRowsPerPage(parseInt(e.target.value, 10));
+                          setPaidPage(0);
+                        }}
+                        rowsPerPageOptions={[15, 25, 50]}
+                      />
+                    </TableContainer>
                   </Box>
               )}
             </>

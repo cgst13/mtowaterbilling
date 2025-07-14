@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import PageHeader from './PageHeader';
 import AnimatedBackground from './AnimatedBackground';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
 const drawerWidth = 280;
 
@@ -112,6 +113,10 @@ const Home = () => {
   const [isStable, setIsStable] = useState(true);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [mySchedule, setMySchedule] = useState([]);
+  const isMobile = useMediaQuery('(max-width:600px)');
+  const [revenueData, setRevenueData] = useState([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [uncollectedRevenue, setUncollectedRevenue] = useState(0);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -188,9 +193,12 @@ const Home = () => {
       const monthlyRevenue = paidBills && paidBills.length > 0
         ? paidBills.reduce((sum, b) => sum + (Number(b.totalbillamount) || 0), 0)
         : 0;
-      // Water Consumption (sum of consumption for Paid bills this month)
-      const waterConsumption = paidBills && paidBills.length > 0
-        ? paidBills.reduce((sum, b) => sum + (Number(b.consumption) || 0), 0)
+      // Water Consumption (sum of consumption for ALL bills, regardless of status)
+      const { data: allBills, error: allBillsError } = await supabase
+        .from('bills')
+        .select('consumption');
+      const waterConsumption = allBills && allBills.length > 0
+        ? allBills.reduce((sum, b) => sum + (Number(b.consumption) || 0), 0)
         : 0;
       // Pending Bills (count of bills not Paid)
       const { count: pendingBills } = await supabase
@@ -257,9 +265,61 @@ const Home = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const fetchRevenueTrend = async () => {
+      const { data: bills, error } = await supabase
+        .from('bills')
+        .select('billedmonth, totalbillamount, paymentstatus')
+        .eq('paymentstatus', 'Paid');
+      if (error) {
+        setRevenueData([]);
+        return;
+      }
+      const monthly = {};
+      bills.forEach(bill => {
+        if (!bill.billedmonth) return;
+        const month = bill.billedmonth.slice(0, 7); // 'YYYY-MM'
+        if (!monthly[month]) monthly[month] = 0;
+        monthly[month] += Number(bill.totalbillamount) || 0;
+      });
+      const months = Object.keys(monthly).sort();
+      const chartData = months.map(month => ({
+        month: new Date(month + '-01').toLocaleString('default', { month: 'short', year: '2-digit' }),
+        revenue: monthly[month]
+      }));
+      setRevenueData(chartData);
+    };
+    fetchRevenueTrend();
+  }, []);
+
+  useEffect(() => {
+    const fetchRevenueStats = async () => {
+      // Total Revenue (Paid)
+      const { data: paidBills, error: paidError } = await supabase
+        .from('bills')
+        .select('totalbillamount')
+        .eq('paymentstatus', 'Paid');
+      const total = paidBills && paidBills.length > 0
+        ? paidBills.reduce((sum, b) => sum + (Number(b.totalbillamount) || 0), 0)
+        : 0;
+      setTotalRevenue(total);
+      // Uncollected Revenue (Unpaid)
+      const { data: unpaidBills, error: unpaidError } = await supabase
+        .from('bills')
+        .select('totalbillamount')
+        .eq('paymentstatus', 'Unpaid');
+      const uncollected = unpaidBills && unpaidBills.length > 0
+        ? unpaidBills.reduce((sum, b) => sum + (Number(b.totalbillamount) || 0), 0)
+        : 0;
+      setUncollectedRevenue(uncollected);
+    };
+    fetchRevenueStats();
+  }, []);
+
   const statsData = [
     { title: 'Total Customers', value: stats.totalCustomers, icon: <PeopleIcon />, color: '#4f46e5', format: v => v?.toLocaleString() },
-    { title: 'Monthly Revenue', value: stats.monthlyRevenue, icon: <MoneyIcon />, color: '#059669', format: v => v != null ? `₱${Number(v).toLocaleString()}` : '' },
+    { title: 'Total Revenue', value: totalRevenue, icon: <MoneyIcon />, color: '#059669', format: v => v != null ? `₱${Number(v).toLocaleString()}` : '' },
+    { title: 'Uncollected Revenue', value: uncollectedRevenue, icon: <MoneyIcon />, color: '#f87171', format: v => v != null ? `₱${Number(v).toLocaleString()}` : '' },
     { title: 'Water Consumption', value: stats.waterConsumption, icon: <WaterIcon />, color: '#0ea5e9', format: v => v != null ? `${Number(v).toLocaleString()} L` : '' },
     { title: 'Pending Bills', value: stats.pendingBills, icon: <ReceiptIcon />, color: '#f59e0b', format: v => v?.toLocaleString() },
   ];
@@ -269,21 +329,6 @@ const Home = () => {
     { title: 'Generate Bills', description: 'Create monthly billing statements', color: '#059669', route: '/billing' },
     { title: 'Process Payment', description: 'Record customer payments', color: '#0ea5e9', route: '/payments' },
     { title: 'View Reports', description: 'Access detailed analytics and reports', color: '#8b5cf6', route: '/reports' },
-  ];
-
-  const revenueData = [
-    { month: 'Jan', revenue: 102000 },
-    { month: 'Feb', revenue: 110500 },
-    { month: 'Mar', revenue: 120000 },
-    { month: 'Apr', revenue: 115000 },
-    { month: 'May', revenue: 123000 },
-    { month: 'Jun', revenue: 130000 },
-    { month: 'Jul', revenue: 128000 },
-    { month: 'Aug', revenue: 135000 },
-    { month: 'Sep', revenue: 140000 },
-    { month: 'Oct', revenue: 138000 },
-    { month: 'Nov', revenue: 145000 },
-    { month: 'Dec', revenue: 152000 },
   ];
 
   const menuItems = [
@@ -296,29 +341,29 @@ const Home = () => {
   ];
 
   return (
-    <Box sx={{ display: 'flex', position: 'relative', minHeight: '100vh', p: 0 }}>
+    <Box sx={{ display: 'flex', position: 'relative', minHeight: '100vh', p: 0, width: '100%' }}>
       <AnimatedBackground />
       <CssBaseline />
       {/* Remove AppBar, Drawer, and sidebar rendering. */}
       {/* Only render the dashboard cards, quick actions, etc. */}
-      <Container maxWidth="xl" sx={{ mt: 3, mb: 4, position: 'relative', zIndex: 2 }}>
+      <Container maxWidth={false} sx={{ mt: { xs: 1, sm: 3 }, mb: { xs: 2, sm: 4 }, position: 'relative', zIndex: 2, px: { xs: 1, sm: 2 }, width: '100%' }}>
         <PageHeader
           title="Dashboard Overview"
           subtitle="LGU Concepcion, Romblon - Water Billing Management System"
           actions={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {isOnline ? (
                   <CheckCircleIcon sx={{ color: 'success.main' }} />
                 ) : (
                   <CancelIcon sx={{ color: 'grey.500' }} />
                 )}
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: 12, sm: 14 } }}>
                   System {isOnline ? 'Online' : 'Offline'}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: 12, sm: 14 } }}>
                   {speedMbps !== null ? `${speedMbps.toFixed(1)} Mbps` : 'N/A'}
                 </Typography>
                 <Chip
@@ -333,19 +378,19 @@ const Home = () => {
         />
 
           {/* Stats Cards */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 4 }, width: '100%' }}>
             {loadingStats
               ? Array.from({ length: 4 }).map((_, i) => (
                   <Grid item xs={12} sm={6} md={3} key={i}>
-                    <Card sx={{ p: 3, borderRadius: 3 }}>
-                      <Skeleton variant="rectangular" height={120} animation="wave" />
+                    <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+                      <Skeleton variant="rectangular" height={100} animation="wave" />
                     </Card>
                   </Grid>
                 ))
               : statsData.map((stat, index) => (
                   <Grid item xs={12} sm={6} md={3} key={index}>
                     <StatsCard>
-                      <CardContent sx={{ p: 3 }}>
+                      <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                           <Box sx={{ 
                             backgroundColor: 'rgba(255,255,255,0.2)', 
@@ -360,10 +405,10 @@ const Home = () => {
                           </Box>
                           <TrendingUpIcon sx={{ opacity: 0.7 }} />
                         </Box>
-                        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, fontSize: { xs: '1.5rem', md: '2.5rem' } }}>
                           {stat.format ? stat.format(stat.value) : <AnimatedNumber value={stat.value} />}
                         </Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: 13, sm: 15 } }}>
                           {stat.title}
                         </Typography>
                       </CardContent>
@@ -373,18 +418,18 @@ const Home = () => {
           </Grid>
 
           {/* Revenue Trend Chart */}
-          <Paper elevation={3} sx={{ mb: 4, p: 3, borderRadius: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: 'primary.main' }}>
+          <Paper elevation={3} sx={{ mb: { xs: 2, sm: 4 }, p: { xs: 2, sm: 3 }, borderRadius: 3, width: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: 'primary.main', fontSize: { xs: 16, sm: 20 } }}>
               Monthly Revenue Trend
             </Typography>
             {loading ? (
-              <Skeleton variant="rectangular" height={320} animation="wave" />
+              <Skeleton variant="rectangular" height={220} animation="wave" />
             ) : (
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={revenueData} margin={{ top: 16, right: 32, left: 0, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={isMobile ? 200 : 320}>
+                <LineChart data={revenueData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontWeight: 600, fill: '#64748b' }} />
-                  <YAxis tickFormatter={v => `₱${(v/1000).toFixed(0)}k`} tick={{ fontWeight: 600, fill: '#64748b' }} />
+                  <XAxis dataKey="month" tick={{ fontWeight: 600, fill: '#64748b', fontSize: isMobile ? 10 : 12 }} />
+                  <YAxis tickFormatter={v => `₱${(v/1000).toFixed(0)}k`} tick={{ fontWeight: 600, fill: '#64748b', fontSize: isMobile ? 10 : 12 }} />
                   <Tooltip formatter={v => `₱${v.toLocaleString()}`} />
                   <Legend />
                   <Line type="monotone" dataKey="revenue" stroke="#06b6d4" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 8 }} />
@@ -394,15 +439,15 @@ const Home = () => {
           </Paper>
 
           {/* Quick Actions */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: '#1e293b', mb: 3 }}>
+          <Box sx={{ mb: { xs: 2, sm: 4 }, width: '100%' }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: '#1e293b', mb: 2, fontSize: { xs: 16, sm: 22 } }}>
               Quick Actions
             </Typography>
-            <Grid container spacing={3}>
+            <Grid container spacing={{ xs: 2, sm: 3 }}>
               {quickActions.map((action, index) => (
                 <Grid item xs={12} sm={6} md={3} key={index}>
                   <ActionCard>
-                    <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                    <CardContent sx={{ p: { xs: 2, sm: 3 }, textAlign: 'center' }}>
                       <Box 
                         sx={{ 
                           width: 60, 
@@ -422,10 +467,10 @@ const Home = () => {
                           {index === 3 && <AnalyticsIcon />}
                         </Box>
                       </Box>
-                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#1e293b' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#1e293b', fontSize: { xs: 15, sm: 18 } }}>
                         {action.title}
                       </Typography>
-                      <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
+                      <Typography variant="body2" sx={{ color: '#64748b', mb: 2, fontSize: { xs: 12, sm: 14 } }}>
                         {action.description}
                       </Typography>
                       <Button 
@@ -434,6 +479,9 @@ const Home = () => {
                         sx={{ 
                           borderColor: action.color,
                           color: action.color,
+                          minHeight: 44,
+                          px: 2,
+                          fontSize: { xs: 13, sm: 15 },
                           '&:hover': {
                             backgroundColor: `${action.color}10`,
                             borderColor: action.color
@@ -451,18 +499,20 @@ const Home = () => {
           </Box>
 
           {/* Recent Activity */}
-          <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: '#1e293b', mb: 3 }}>
+          <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, border: '1px solid #e2e8f0', width: '100%' }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: '#1e293b', mb: 2, fontSize: { xs: 16, sm: 22 } }}>
               Recent Activity
             </Typography>
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography variant="body1" sx={{ color: '#64748b' }}>
+            <Box sx={{ textAlign: 'center', py: { xs: 2, sm: 4 } }}>
+              <Typography variant="body1" sx={{ color: '#64748b', fontSize: { xs: 13, sm: 16 } }}>
                 No recent activity to display. Start by adding customers or processing payments.
               </Typography>
               <Button 
                 variant="contained" 
                 sx={{ 
                   mt: 2,
+                  minHeight: 44,
+                  fontSize: { xs: 13, sm: 15 },
                   background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
                   '&:hover': {
                     background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
@@ -474,7 +524,7 @@ const Home = () => {
             </Box>
           </Paper>
         </Container>
-      <Dialog open={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} maxWidth="sm" fullWidth
+      <Dialog open={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}
         PaperProps={{
           sx: {
             background: 'rgba(255,255,255,0.7)',
@@ -488,43 +538,45 @@ const Home = () => {
         }}
       >
         <DialogTitle sx={{
-          display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, fontSize: 22,
+          display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, fontSize: { xs: 18, sm: 22 },
           color: '#0284c7',
           background: 'linear-gradient(90deg, #38bdf8 0%, #0ea5e9 100%)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           pb: 1.5
         }}>
-          <CalendarTodayIcon sx={{ color: '#0ea5e9', fontSize: 32, mr: 1, filter: 'drop-shadow(0 2px 8px #38bdf8aa)' }} />
+          <CalendarTodayIcon sx={{ color: '#0ea5e9', fontSize: { xs: 24, sm: 32 }, mr: 1, filter: 'drop-shadow(0 2px 8px #38bdf8aa)' }} />
           Your Collection Schedule for This Month
         </DialogTitle>
         <DialogContent sx={{ mt: 1, p: 0 }}>
           {mySchedule.length > 0 ? (
             <TableContainer component={Paper} sx={{
               mt: 2, mb: 2, boxShadow: '0 2px 12px 0 #0ea5e91a', borderRadius: 3, background: 'rgba(255,255,255,0.85)',
-              animation: 'fadeInTable 0.8s cubic-bezier(.4,0,.2,1)'
+              animation: 'fadeInTable 0.8s cubic-bezier(.4,0,.2,1)',
+              overflowX: 'auto',
+              minWidth: 0
             }}>
-              <Table>
+              <Table size={isMobile ? 'small' : 'medium'}>
                 <TableHead>
                   <TableRow sx={{ background: 'linear-gradient(90deg, #bae6fd 0%, #e0f2fe 100%)' }}>
-                    <TableCell sx={{ fontWeight: 700, color: '#0284c7', fontSize: 16 }}>Date</TableCell>
-                    <TableCell sx={{ fontWeight: 700, color: '#0284c7', fontSize: 16 }}>Barangay</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: '#0284c7', fontSize: { xs: 13, sm: 16 } }}>Date</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: '#0284c7', fontSize: { xs: 13, sm: 16 } }}>Barangay</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {mySchedule.map((s, i) => (
                     <TableRow key={i} sx={{ transition: 'background 0.3s', '&:hover': { background: '#e0f2fe' } }}>
-                      <TableCell sx={{ fontWeight: 600, color: '#0ea5e9', fontSize: 15 }}>
+                      <TableCell sx={{ fontWeight: 600, color: '#0ea5e9', fontSize: { xs: 12, sm: 15 } }}>
                         {new Date(s.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#1e293b', fontSize: 15 }}>{s.barangay}</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: '#1e293b', fontSize: { xs: 12, sm: 15 } }}>{s.barangay}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
           ) : (
-            <Box sx={{ p: 3, textAlign: 'center', color: '#64748b', fontWeight: 500 }}>No schedule found for this month.</Box>
+            <Box sx={{ p: 3, textAlign: 'center', color: '#64748b', fontWeight: 500, fontSize: { xs: 13, sm: 15 } }}>No schedule found for this month.</Box>
           )}
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
@@ -532,6 +584,8 @@ const Home = () => {
             background: 'linear-gradient(90deg, #38bdf8 0%, #0ea5e9 100%)',
             color: '#fff', fontWeight: 700, px: 4, borderRadius: 2,
             boxShadow: '0 2px 8px 0 #0ea5e955',
+            minHeight: 44,
+            fontSize: { xs: 13, sm: 15 },
             '&:hover': { background: 'linear-gradient(90deg, #0ea5e9 0%, #38bdf8 100%)' }
           }}>Close</Button>
         </DialogActions>

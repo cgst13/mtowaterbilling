@@ -14,6 +14,7 @@ import Users from './Users';
 import RPTCalculator from './RPTCalculator';
 import Reports from './Reports';
 import Schedule from './Schedule';
+import BillChecker from './BillChecker';
 import { AccountCircle, Dashboard } from '@mui/icons-material';
 import { GlobalSnackbarProvider } from './GlobalSnackbar';
 
@@ -162,7 +163,8 @@ const App = () => {
               title="Water Billing System"
             />
           } />
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<Navigate to="/billchecker" replace />} />
+          <Route path="/billchecker" element={<BillChecker />} />
           <Route path="/" element={<Layout />}>
             <Route path="home" element={
               <Home 

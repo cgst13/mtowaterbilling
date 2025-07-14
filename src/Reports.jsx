@@ -11,6 +11,7 @@ import GroupIcon from '@mui/icons-material/Group';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import DiscountIcon from '@mui/icons-material/Percent';
 import AnimatedBackground from './AnimatedBackground';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
 const periodOptions = [
   { label: 'Monthly', value: 'monthly' },
@@ -55,6 +56,7 @@ const Reports = () => {
   const [customerTypeCounts, setCustomerTypeCounts] = useState([]);
   const [barangayCounts, setBarangayCounts] = useState([]);
   const [discountedCustomers, setDiscountedCustomers] = useState([]);
+  const isMobile = useMediaQuery('(max-width:600px)');
 
   const fetchReport = async () => {
     setLoading(true);
@@ -117,21 +119,21 @@ const Reports = () => {
   }, [period, customStart, customEnd, paymentStatus]);
 
   return (
-    <Box sx={{ position: 'relative', minHeight: '100vh', p: 0 }}>
+    <Box sx={{ position: 'relative', minHeight: '100vh', p: 0, width: '100%' }}>
       <AnimatedBackground />
-      <Container maxWidth="lg" sx={{ py: 4, position: 'relative', zIndex: 2 }}>
+      <Container maxWidth={false} sx={{ py: { xs: 2, sm: 4 }, position: 'relative', zIndex: 2, px: { xs: 1, sm: 2 }, width: '100%' }}>
         <PageHeader title="Reports" />
-        <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" mb={2}>
+        <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, mb: 3, width: '100%' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" mb={2} sx={{ width: '100%' }}>
             <Tabs
               value={period}
               onChange={(_, v) => setPeriod(v)}
               textColor="primary"
               indicatorColor="primary"
-              sx={{ minHeight: 48 }}
+              sx={{ minHeight: 48, width: '100%', maxWidth: { xs: '100%', sm: 400 } }}
             >
               {periodOptions.map(opt => (
-                <Tab key={opt.value} label={opt.label} value={opt.value} sx={{ minHeight: 48 }} />
+                <Tab key={opt.value} label={opt.label} value={opt.value} sx={{ minHeight: 48, fontSize: { xs: 13, sm: 15 } }} />
               ))}
             </Tabs>
             {period === 'custom' && (
@@ -164,7 +166,7 @@ const Reports = () => {
             </TextField>
             <Button variant="contained" onClick={fetchReport} disabled={loading}>Refresh</Button>
           </Stack>
-          <Grid container spacing={3} sx={{ mb: 2 }}>
+          <Grid container spacing={2} sx={{ mb: 2, width: '100%' }}>
             <Grid item xs={12} sm={4} md={2}>
               <Paper sx={{ p: 2, borderRadius: 2, background: '#e0f2fe', textAlign: 'center' }}>
                 <Typography variant="subtitle2" color="primary">Total Revenue</Typography>

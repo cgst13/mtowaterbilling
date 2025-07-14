@@ -4,12 +4,14 @@ import { Box, Typography, Stack } from '@mui/material';
 const PageHeader = ({ title, subtitle, actions }) => (
   <Box
     sx={{
+      width: '100%',
+      maxWidth: '100%',
       mb: 4,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
-      px: { xs: 2, md: 4 },
+      px: { xs: 1, md: 2 },
       py: { xs: 2, md: 3 },
       borderRadius: 4,
       background: 'rgba(255,255,255,0.7)',
@@ -57,7 +59,7 @@ const PageHeader = ({ title, subtitle, actions }) => (
         </Typography>
       )}
     </Stack>
-    {actions && <Box sx={{ mt: { xs: 2, sm: 0 }, zIndex: 1 }}>{actions}</Box>}
+    {actions && <Box sx={{ mt: { xs: 2, sm: 0 }, zIndex: 1, flexShrink: 1, minWidth: 0, maxWidth: '100%' }}>{actions}</Box>}
     <style>{`
       @keyframes fadeInHeader {
         from { opacity: 0; transform: translateY(-24px) scale(0.98); }

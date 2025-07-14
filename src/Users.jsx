@@ -7,6 +7,7 @@ import { supabase } from './supabaseClient';
 import PageHeader from './PageHeader';
 import { useGlobalSnackbar } from './GlobalSnackbar';
 import AnimatedBackground from './AnimatedBackground';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
 const roleOptions = ['Admin', 'Collector', 'Reader'];
 const statusOptions = ['active', 'inactive', 'pending'];
@@ -33,6 +34,7 @@ const Users = () => {
   const [departmentOptions, setDepartmentOptions] = useState([]);
   const showSnackbar = useGlobalSnackbar();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const isMobile = useMediaQuery('(max-width:600px)');
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -189,30 +191,27 @@ const Users = () => {
   };
 
   return (
-    <Box sx={{ position: 'relative', minHeight: '100vh', p: 0 }}>
+    <Box sx={{ position: 'relative', minHeight: '100vh', p: 0, width: '100%' }}>
       <AnimatedBackground />
-      <Container maxWidth="lg" sx={{ py: 4, position: 'relative', zIndex: 2 }}>
+      <Container maxWidth={false} sx={{ py: { xs: 2, sm: 4 }, position: 'relative', zIndex: 2, px: { xs: 1, sm: 2 }, width: '100%' }}>
         <PageHeader
           title="Users"
           actions={
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleDialogOpen()}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleDialogOpen()} sx={{ minHeight: 44, fontSize: { xs: 13, sm: 15 } }}>
               Add User
             </Button>
           }
         />
-        <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 8px rgba(30,58,138,0.04)', maxWidth: '100%' }}>
-          <Table sx={{ minWidth: 900 }}>
+        <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 8px rgba(30,58,138,0.04)', width: '100%', overflowX: 'auto', minWidth: 0 }}>
+          <Table sx={{ minWidth: 650, width: '100%', fontSize: { xs: 13, sm: 15 } }}>
             <TableHead>
               <TableRow sx={{ background: '#f1f5f9' }}>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Email</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Department</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Position</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Role</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Date Created</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Last Login</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.main' }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 100, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Role</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Department</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 100, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Status</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: 13, sm: 15 }, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -236,12 +235,9 @@ const Users = () => {
                   <TableRow key={u.userid} hover sx={{ backgroundColor: i % 2 === 0 ? '#f8fafc' : '#e0f2fe', transition: 'background 0.2s', '&:hover': { backgroundColor: '#bae6fd' } }}>
                     <TableCell>{u.firstname} {u.lastname}</TableCell>
                     <TableCell>{u.email}</TableCell>
-                    <TableCell>{u.department}</TableCell>
-                    <TableCell>{u.position}</TableCell>
                     <TableCell>{u.role}</TableCell>
+                    <TableCell>{u.department}</TableCell>
                     <TableCell>{u.status}</TableCell>
-                    <TableCell>{u.datecreated ? new Date(u.datecreated).toLocaleString() : ''}</TableCell>
-                    <TableCell>{u.lastlogin ? new Date(u.lastlogin).toLocaleString() : ''}</TableCell>
                     <TableCell align="right">
                       <IconButton color="primary" onClick={() => handleDialogOpen(u)}><EditIcon /></IconButton>
                       <IconButton color="error" onClick={() => { setSelectedUser(u); setDeleteDialogOpen(true); }}><DeleteIcon /></IconButton>

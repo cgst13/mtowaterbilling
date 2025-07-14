@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist",
     "postbuild": "copy dist\\index.html dist\\404.html"
   },
+  "homepage": "https://cgst13.github.io/mtowaterbilling/",
   "dependencies": {
     "@date-io/date-fns": "^3.2.1",
     "@emotion/react": "^11.14.0",
@@ -20,7 +21,9 @@
     "@mui/material": "^7.2.0",
     "@mui/x-date-pickers": "^8.7.0",
     "@supabase/supabase-js": "^2.50.3",
+    "csv-parser": "^3.2.0",
     "date-fns": "^4.1.0",
+    "json2csv": "^6.0.0-alpha.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.3",
